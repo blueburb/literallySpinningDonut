@@ -176,23 +176,21 @@ int main(int argc, char* argv[]) {
 
     float time;
     float lighting;
-    Vector3f donuttedPoint;
     Vector3f transformedPoint;
-    Vector4f homoPoint;
     Vector2f screenCoords;
     Vector3f sunVec(0,-1,0);
-    Vector3f normal;
     
+
     Matrix3f rotations;
 
 
     auto startTime = std::chrono::steady_clock::now();
 
-
+    //lists of the points to be cached
     std::list<Vector3f> donuttedPointsList;
     std::list<Vector3f> donuttedNormalsList;
 
-
+    //precomputing the entire surface of the donut
     for (float j = 0; j< 2*M_PI; j+=donut.ringSpacing){
         for (float i = 0; i < 2*M_PI; i+=donut.tubeSpacing){
             Matrix4f donuttingMat = UsefulMatrices::GenDonnutingMatrix(j, i, donut.innerWidth+donut.tubeWidth);
@@ -201,8 +199,31 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    //creating vectors out of the point and normal lists
     std::vector<Vector3f> donuttedPoints(donuttedPointsList.begin(), donuttedPointsList.end());
     std::vector<Vector3f> donuttedNormals(donuttedNormalsList.begin(), donuttedNormalsList.end());
+
+
+    //creating matrices for the points and normals
+    MatrixXf donuttedPointsMat(3, donuttedPoints.size());
+    MatrixXf donuttedNormalsMat(3, donuttedNormals.size());
+
+    //populating the matrices
+    for (int i = 0; i<donuttedPoints.size(); i++){
+        donuttedPointsMat.col(i) = donuttedPoints[i];
+        donuttedNormalsMat.col(i) = donuttedNormals[i];
+    }
+
+
+
+    //matrices to have the points before unwraping post-transformation
+    MatrixXf transformedPointsMat(3, donuttedPoints.size());
+    MatrixXf transformedNormalsMat(3, donuttedNormals.size());
+    
+
+
+    
+
 
 
     int pointCount = donuttedPointsList.size();
@@ -212,6 +233,13 @@ int main(int argc, char* argv[]) {
     while (true){
             
         time = (std::chrono::steady_clock::now() - startTime).count()/1000000000.0;
+
+        //buffer clearing
+        for (auto& i : screen.Zbuffer)
+            i = 99999;
+        for (auto& i : screen.frameBuffer)
+            i = ' ';
+
         Vector3f Angles(time*speedx, time*speedy, time*speedz);
 
         float cosX = cos(Angles.x()); float sinX = sin(Angles.x());
@@ -221,30 +249,22 @@ int main(int argc, char* argv[]) {
         rotations = UsefulMatrices::GenRotationMatZ(cosZ, sinZ)*
                     UsefulMatrices::GenRotationMatY(cosY, sinY)*
                     UsefulMatrices::GenRotationMatX(cosX, sinX);
-
-
-
-
-        for (auto& i : screen.Zbuffer)
-            i = 99999;
-
-        for (auto& i : screen.frameBuffer)
-            i = ' ';
-
-
         
 
+        transformedPointsMat = rotations * donuttedPointsMat;
+        transformedNormalsMat = rotations * donuttedNormalsMat;
 
 
+
+            
 
 
         for (int i = 0; i< pointCount; i++){
-            transformedPoint = rotations * donuttedPoints[i];
-            normal = rotations * donuttedNormals[i];
-            lighting = (sunVec.dot(normal) + 1)/2;
+            
+            lighting = (sunVec.dot(transformedNormalsMat.col(i))+1)/2;
 
+            transformedPoint = transformedPointsMat.col(i);
 
-                
             float relZ = transformedPoint.z() -(screen.screenPos-screen.eyeDist);
             if (relZ > 0){
                 screenCoords = (transformedPoint.head<2>() * (screen.eyeDist)/relZ);
@@ -256,7 +276,8 @@ int main(int argc, char* argv[]) {
                 }
             
             }
-        }
+            }
+        
 
         system("clear");
         
