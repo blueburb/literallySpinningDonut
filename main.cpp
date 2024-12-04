@@ -1,11 +1,10 @@
 #include <stdlib.h>
 #include <iostream>
 #include <eigen3/Eigen/Dense>
-#include <stdexcept>
 #include <chrono>
 #include <cmath>
-#include <map>
 #include <string>
+#include<list>
 
 using namespace Eigen;
 
@@ -108,7 +107,7 @@ public:
     float screenPos;
 
     std::vector<char> frameBuffer;
-    std::vector<float> Zbuffer;
+        std::vector<float> Zbuffer;
 
     RenderTexture(int pixelsWidth, int pixelsHeight, float eyeDist, float screenZ){
         this->screenPos = screenZ;
@@ -133,7 +132,6 @@ public:
             return ((y+pixelsHeight/2)*pixelsWidth + x+pixelsWidth/2);
         else
             return -1;
-            //throw std::out_of_range("one or more of the indices is out of range, x: " + std::to_string(x) + ", y: " + std::to_string(y));
     }
 };
 
@@ -191,6 +189,25 @@ int main(int argc, char* argv[]) {
     auto startTime = std::chrono::steady_clock::now();
 
 
+    std::list<Vector3f> donuttedPointsList;
+    std::list<Vector3f> donuttedNormalsList;
+
+
+    for (float j = 0; j< 2*M_PI; j+=donut.ringSpacing){
+        for (float i = 0; i < 2*M_PI; i+=donut.tubeSpacing){
+            Matrix4f donuttingMat = UsefulMatrices::GenDonnutingMatrix(j, i, donut.innerWidth+donut.tubeWidth);
+            donuttedPointsList.push_back((donuttingMat*baseVec.homogeneous()).head<3>());
+            donuttedNormalsList.push_back((donuttingMat*baseNorm.homogeneous()).head<3>().normalized());
+        }
+    }
+
+    std::vector<Vector3f> donuttedPoints(donuttedPointsList.begin(), donuttedPointsList.end());
+    std::vector<Vector3f> donuttedNormals(donuttedNormalsList.begin(), donuttedNormalsList.end());
+
+
+    int pointCount = donuttedPointsList.size();
+
+
     //frame loop
     while (true){
             
@@ -215,51 +232,48 @@ int main(int argc, char* argv[]) {
             i = ' ';
 
 
+        
 
-        //for every point to plot
-        for (float j = 0; j< 2*M_PI; j+=donut.ringSpacing){
-            for (float i = 0; i < 2*M_PI; i+=donut.tubeSpacing){
 
-                Matrix4f donuttingMat = UsefulMatrices::GenDonnutingMatrix(j, i, donut.innerWidth+donut.tubeWidth);
-                transformedPoint = rotations * (donuttingMat * baseVec.homogeneous()).head<3>();
 
-                normal = (rotations * (donuttingMat * baseNorm.homogeneous()).head<3>()).normalized();
-                lighting = (sunVec.dot(normal) + 1)/2;
+
+
+        for (int i = 0; i< pointCount; i++){
+            transformedPoint = rotations * donuttedPoints[i];
+            normal = rotations * donuttedNormals[i];
+            lighting = (sunVec.dot(normal) + 1)/2;
 
 
                 
+            float relZ = transformedPoint.z() -(screen.screenPos-screen.eyeDist);
+            if (relZ > 0){
+                screenCoords = (transformedPoint.head<2>() * (screen.eyeDist)/relZ);
+                int bufferIndex = screen.GetBufferIndexFromCoords((int)screenCoords.x(), (int)screenCoords.y());
 
-
-
-                float relZ = transformedPoint.z() -(screen.screenPos-screen.eyeDist);
-                if (relZ > 0){
-                    screenCoords = (transformedPoint.head<2>() * (screen.eyeDist)/relZ);
-                    int bufferIndex = screen.GetBufferIndexFromCoords((int)screenCoords.x(), (int)screenCoords.y());
-
-                    if(transformedPoint.z() < screen.Zbuffer[bufferIndex]){
-                        screen.Zbuffer[bufferIndex] = transformedPoint.z();
-                        screen.frameBuffer[bufferIndex] = "...:-~=*%@#"[(int)(lighting*10)];
-                    }
+                if(transformedPoint.z() < screen.Zbuffer[bufferIndex]){
+                    screen.Zbuffer[bufferIndex] = transformedPoint.z();
+                    screen.frameBuffer[bufferIndex] = ".,-~:;=!*#$@"[(int)(lighting*10)];
                 }
-                
-
-
-            }
             
+            }
         }
 
         system("clear");
-        std::cout << "\n\n\n";
+        
+        std::cout << "\n\n\n";        
+        
         for(int y = 0; y < screen.pixelsHeight; y++){
             for(int x = 0; x< screen.pixelsWidth; x++){
                 std::cout << screen.frameBuffer[y*screen.pixelsWidth + x];
             }
             std::cout<<std::endl;
         }
-
         
+        while (((std::chrono::steady_clock::now() - startTime).count()/1000000000.0)-time < 1/60.0){
+            continue;
+        }
+        std::cout << 1/((std::chrono::steady_clock::now() - startTime).count()/1000000000.0-time);
 
-        
 
     }
 
